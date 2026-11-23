@@ -14,7 +14,8 @@ drops them and `fs/susfs.c` is `#ifdef`'d away.
 1. Replace the decoy submodule with the SUSFS-enabled fork:
    `Android-Artisan/KernelSU-Next` @ tag `v3.1.0-legacy-susfs`
    (defines `CONFIG_KSU_SUSFS_*`, manual-hook capable, version code 33024,
-    manager signature hash `79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7`).
+    manager signature hash `79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7`
+    — this is the **official KernelSU-Next** manager key, not an Artisan-specific one).
 
    ```bash
    rm -rf KernelSU-Next
@@ -66,8 +67,11 @@ that writes `boot` and `dtbo`.
 
 ## Flash + manager
 - Flash the zip in TWRP/OrangeFox (writes `/dev/block/by-name/boot` + `dtbo`).
-- Manager APK **must** match the embedded signature: Android-Artisan KernelSU-Next
-  release `v3.1.0-legacy-susfs`.
+- Manager: the kernel trusts the **official KernelSU-Next signing key**
+  (`KSU_NEXT_MANAGER_HASH = 79e590…`, byte-identical to upstream KernelSU-Next), so install the
+  **official KernelSU-Next Manager** (https://github.com/KernelSU-Next/KernelSU-Next/releases).
+  It is signature-validated, not version-locked; a ~v3.1.x release best matches this built-in
+  susfs v2.2.0 driver, but a current release is also accepted. No Artisan-specific APK is needed.
 - Userspace hiding stack: ReZygisk/ZygiskNext → Shamiko → (optional) Tricky Store.
 
 ## Verified in the built image

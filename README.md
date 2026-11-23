@@ -25,8 +25,12 @@ hiding is real.
 ## Flash
 1. Back up your current `boot.img` first.
 2. TWRP/OrangeFox → Install → `BenlyKernel-v4.0.4-SUSFS-c2s.zip` → reboot.
-3. Install the matching manager: **Android-Artisan KernelSU-Next, tag `v3.1.0-legacy-susfs`**
-   (the kernel is signature-locked to it: hash `79e590…`).
+3. Install the **official KernelSU-Next Manager** → https://github.com/KernelSU-Next/KernelSU-Next/releases
+   The kernel trusts the **official KernelSU-Next signing key** (`KSU_NEXT_MANAGER_HASH = 79e590…`,
+   byte-identical to upstream), so the official app is recognized as manager. It is
+   **signature-validated, not version-locked** — a current release grants root; a ~v3.1.x
+   release best matches this built-in susfs v2.2.0 driver (driver version code `33024`).
+   (No Android-Artisan-specific APK is needed; their `v3.1.0-legacy-susfs` is only a git tag.)
 4. Userspace hiding: ReZygisk/ZygiskNext → Shamiko → (optional) Tricky Store.
 
 ## Build
