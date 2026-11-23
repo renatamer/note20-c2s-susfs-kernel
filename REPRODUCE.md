@@ -46,10 +46,14 @@ drops them and `fs/susfs.c` is `#ifdef`'d away.
 ## Build (this container)
 
 Host tools: `flex cpio lz4` (installed via nix here; `apt install flex cpio lz4` elsewhere).
-Toolchain: AOSP clang (benly auto-downloads clang-r450784d from android.googlesource.com).
-That host is blocked in this environment, so this build used the system **clang-18**
-LLVM toolchain instead — it compiled cleanly. For a byte-closer-to-official build,
-use clang-14 (r450784d).
+
+**Toolchain: you MUST build with clang-14, not a newer clang.** benly auto-downloads AOSP
+`clang-r450784d` (clang 14). A build with **clang-18 compiles cleanly but the resulting
+kernel hangs at the boot logo** (confirmed on-device — a silent miscompilation of this
+4.19 tree). The verified-booting build here was made with **upstream LLVM clang 14.0.0**
+(https://github.com/llvm/llvm-project/releases/tag/llvmorg-14.0.0), which behaves like
+benly's AOSP clang-14. Put its `bin/` first on `PATH` so `LLVM=1` picks up clang 14 +
+`ld.lld` + the `llvm-*` binutils.
 
 ```bash
 make LLVM=1 LLVM_IAS=1 ARCH=arm64 O=out -j"$(nproc)" \

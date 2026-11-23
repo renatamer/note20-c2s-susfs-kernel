@@ -14,7 +14,7 @@ hiding is real.
 ## Contents
 | Path | What |
 |------|------|
-| `prebuilt/BenlyKernel-v4.0.4-SUSFS-c2s.zip` | Recovery-flashable (TWRP/OrangeFox); writes `boot` + `dtbo` |
+| `prebuilt/BenlyKernel-v4.0.4-SUSFS-c2s-clang14.zip` | Recovery-flashable (TWRP/OrangeFox); writes `boot` + `dtbo`. **Verified booting** (built with clang-14) |
 | `prebuilt/boot.img` | Raw boot image (header v2) |
 | `prebuilt/dtbo.img` | Device-tree overlay image |
 | `prebuilt/SHA256SUMS` | Checksums |
@@ -24,7 +24,8 @@ hiding is real.
 
 ## Flash
 1. Back up your current `boot.img` first.
-2. TWRP/OrangeFox → Install → `BenlyKernel-v4.0.4-SUSFS-c2s.zip` → reboot.
+2. TWRP/OrangeFox → Install → `BenlyKernel-v4.0.4-SUSFS-c2s-clang14.zip` → reboot.
+   (Must be a clang-14 build — a clang-18 build compiles but hangs at the boot logo.)
 3. Install the **official KernelSU-Next Manager** → https://github.com/KernelSU-Next/KernelSU-Next/releases
    The kernel trusts the **official KernelSU-Next signing key** (`KSU_NEXT_MANAGER_HASH = 79e590…`,
    byte-identical to upstream), so the official app is recognized as manager. It is
