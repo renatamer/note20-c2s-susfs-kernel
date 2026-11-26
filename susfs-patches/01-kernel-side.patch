@@ -1,3 +1,16 @@
+diff --git a/arch/arm64/configs/exynos9830_defconfig b/arch/arm64/configs/exynos9830_defconfig
+index 275ff7dd4..4ec6ee55c 100644
+--- a/arch/arm64/configs/exynos9830_defconfig
++++ b/arch/arm64/configs/exynos9830_defconfig
+@@ -29,7 +29,7 @@ CONFIG_THREAD_INFO_IN_TASK=y
+ #
+ CONFIG_INIT_ENV_ARG_LIMIT=32
+ # CONFIG_COMPILE_TEST is not set
+-CONFIG_LOCALVERSION="-BenlyKERNEL-v4.0.4"
++CONFIG_LOCALVERSION="-NastyKernel-1.1"
+ # CONFIG_LOCALVERSION_AUTO is not set
+ CONFIG_BUILD_SALT=""
+ CONFIG_HAVE_KERNEL_GZIP=y
 diff --git a/fs/devpts/inode.c b/fs/devpts/inode.c
 index e04549b74..594fbaa02 100644
 --- a/fs/devpts/inode.c

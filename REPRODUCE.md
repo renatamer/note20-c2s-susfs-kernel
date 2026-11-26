@@ -1,84 +1,68 @@
-# BenlyKernel v4.0.4 + working SUSFS — c2s (Galaxy Note20 Ultra, SM-N986B)
+# Nasty Kernel — reproduction recipe (c2s, Exynos 990, 4.19)
 
-Reproduction notes for the Path A build (KernelSU-Next manual hooks + SUSFS v2.2.0),
-targeting BenlyROM OneUI 8.5 on the Exynos 990 `c2s`.
+Build a Nasty Kernel for the Galaxy Note20 Ultra (SM-N986B, `c2s`) on BenlyROM One UI 8.5:
+KernelSU-Next (manual hooks) + working SUSFS v2.2.0 + kernel-level SELinux anti-detection.
 
-## Problem this fixes
-benly's `BenlyROMkernel_exynos990` @ tag `4.0.4` ships SUSFS **compiled out**: the
-`exynos9830_defconfig` lists `CONFIG_KSU_SUSFS_*` but the committed KernelSU-Next
-submodule (upstream `c81cdf5`) does not *define* those symbols, so `make oldconfig`
-drops them and `fs/susfs.c` is `#ifdef`'d away.
-
-## Fix = correct KSU-side + 3 small reconciliation patches
-
-1. Replace the decoy submodule with the SUSFS-enabled fork:
-   `Android-Artisan/KernelSU-Next` @ tag `v3.1.0-legacy-susfs`
-   (defines `CONFIG_KSU_SUSFS_*`, manual-hook capable, version code 33024,
-    manager signature hash `79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7`
-    — this is the **official KernelSU-Next** manager key, not an Artisan-specific one).
-
-   ```bash
-   rm -rf KernelSU-Next
-   git clone --depth 1 --branch v3.1.0-legacy-susfs \
-     https://github.com/Android-Artisan/KernelSU-Next.git KernelSU-Next
-   # symlink drivers/kernelsu -> ../KernelSU-Next/kernel already present in benly's tree
-   ```
-
-2. Apply the patches in this folder:
-   - `01-kernel-side-susfs-fixes.patch` — adds `susfs_reorder_mnt_id()` (no-op; benly's
-     v2.2.0 SUS_MOUNT hides via `hide_sus_mnts_for_non_su_procs`, not a tracked mnt_id
-     list) and makes `fs/devpts/inode.c` declare `ksu_handle_devpts` `extern` instead of
-     redefining it (the KSU-side defines it → was a duplicate-symbol link error).
-   - `02-ksu-side-supercalls.patch` — no-ops the two **deprecated** commands
-     `CMD_SUSFS_SET_ANDROID_DATA_ROOT_PATH` / `CMD_SUSFS_SET_SDCARD_ROOT_PATH`
-     (their `susfs_set_i_state_on_external_dir()` was removed in benly's v2.2.0
-     kernel-side; hiding is handled by `CMD_SUSFS_ADD_SUS_PATH[_LOOP]`).
-
-   ```bash
-   git apply 01-kernel-side-susfs-fixes.patch
-   cd KernelSU-Next && git apply ../02-ksu-side-supercalls.patch && cd ..
-   ```
-
-   `susfs_is_sid_equal` / `susfs_zygote_sid` and `susfs_set_current_proc_umounted`
-   are already provided by the KSU-side (`selinux/selinux.c`) and benly's
-   `susfs_def.h` respectively — no patch needed.
-
-## Build (this container)
-
-Host tools: `flex cpio lz4` (installed via nix here; `apt install flex cpio lz4` elsewhere).
-
-**Toolchain: you MUST build with clang-14, not a newer clang.** benly auto-downloads AOSP
-`clang-r450784d` (clang 14). A build with **clang-18 compiles cleanly but the resulting
-kernel hangs at the boot logo** (confirmed on-device — a silent miscompilation of this
-4.19 tree). The verified-booting build here was made with **upstream LLVM clang 14.0.0**
-(https://github.com/llvm/llvm-project/releases/tag/llvmorg-14.0.0), which behaves like
-benly's AOSP clang-14. Put its `bin/` first on `PATH` so `LLVM=1` picks up clang 14 +
-`ld.lld` + the `llvm-*` binutils.
-
+## 1. Base source + KSU driver
 ```bash
-make LLVM=1 LLVM_IAS=1 ARCH=arm64 O=out -j"$(nproc)" \
-     exynos9830_defconfig c2s.config ksu.config
+git clone --depth 1 --branch 4.0.4 https://github.com/benly-binh24/BenlyROMkernel_exynos990.git nasty
+cd nasty
+# the committed submodule is a decoy (no susfs); swap in the SUSFS-enabled KSU fork:
+rm -rf KernelSU-Next
+git clone --depth 1 --branch v3.1.0-legacy-susfs \
+  https://github.com/Android-Artisan/KernelSU-Next.git KernelSU-Next
+# drivers/kernelsu -> ../KernelSU-Next/kernel symlink is already in benly's tree
+```
+
+## 2. Apply the patches (this repo)
+- `susfs-patches/01-kernel-side.patch` — susfs no-op reconciliation (`susfs_reorder_mnt_id`,
+  the deprecated `set_i_state` callers), makes `fs/devpts/inode.c` declare `ksu_handle_devpts`
+  `extern` (it's defined KSU-side), and sets the `NastyKernel-1.1` banner.
+- `susfs-patches/02-ksu-hardening.patch` — the anti-detection work, applied inside `KernelSU-Next/`:
+  - **SELinux `ksu_file` → random label** (`KERNEL_SU_FILE`). The patch ships a **placeholder**
+    `REPLACE_WITH_RANDOM_LABEL` — **generate your own and substitute it before applying:**
+    ```bash
+    LABEL="$(tr -dc 'a-z' < /dev/urandom | head -c8)"; echo "my label: $LABEL"
+    sed -i "s/REPLACE_WITH_RANDOM_LABEL/$LABEL/" susfs-patches/02-ksu-hardening.patch
+    ```
+  - **seqno-split fix** in `kernel/selinux/rules.c`: KSU's AVC reset mirrors a real policy reload
+    (`++selinux_state.ss->latest_granting`) instead of passing `0`, so the status page's
+    `policyload` stays consistent (no `app_zygote` seqno split).
+  - **version pin** to `33024` in `kernel/Kbuild`.
+  - no-op the two deprecated external-dir susfs commands in `supercalls.c`.
+```bash
+git apply susfs-patches/01-kernel-side.patch
+( cd KernelSU-Next && git apply ../susfs-patches/02-ksu-hardening.patch )
+```
+
+## 3. Toolchain — clang-14 ONLY
+benly auto-downloads AOSP clang-r450784d (clang-14). **A clang-18 build compiles cleanly but the
+kernel HANGS at the boot logo** (silent miscompilation of this 4.19 tree) — confirmed on-device.
+The verified build used **upstream LLVM clang 14.0.0**
+(https://github.com/llvm/llvm-project/releases/tag/llvmorg-14.0.0); put its `bin/` first on PATH.
+Host tools: `flex cpio lz4`.
+
+## 4. Build
+```bash
+make LLVM=1 LLVM_IAS=1 ARCH=arm64 O=out -j"$(nproc)" exynos9830_defconfig c2s.config ksu.config
 make LLVM=1 LLVM_IAS=1 ARCH=arm64 O=out -j"$(nproc)"
 ```
-Output: `out/arch/arm64/boot/Image` (+ DTBs under `out/arch/arm64/boot/dts/...`).
+Verify: `strings out/arch/arm64/boot/Image | grep "Linux version"` → `NastyKernel-1.1`,
+and your random label present while `ksu_file` is absent.
 
-## Package (benly's committed toolchain)
-Replicates `./build.sh -m c2s -k y` packaging: builds `dtb.img`, `dtbo.img`, the
-ramdisk, then `mkbootimg` (header v2, pagesize 2048, base 0x10000000,
-board SRPTB27C009KU, cmdline `androidboot.hardware=exynos990 loop.max_part=7`) →
-`boot.img`, zipped with `update-binary`/`updater-script` into a recovery-flashable zip
-that writes `boot` and `dtbo`.
+## 5. Package (benly's committed toolchain)
+`./build.sh -m c2s -k y` style: build `dtb.img` + `dtbo.img`, the ramdisk, then `mkbootimg`
+(header v2, pagesize 2048, base 0x10000000, board SRPTB27C009KU,
+cmdline `androidboot.hardware=exynos990 loop.max_part=7`) → `boot.img`, zipped with
+`update-binary`/`updater-script` (writes `boot` + `dtbo`).
 
-## Flash + manager
-- Flash the zip in TWRP/OrangeFox (writes `/dev/block/by-name/boot` + `dtbo`).
-- Manager: the kernel trusts the **official KernelSU-Next signing key**
-  (`KSU_NEXT_MANAGER_HASH = 79e590…`, byte-identical to upstream KernelSU-Next), so install the
-  **official KernelSU-Next Manager** (https://github.com/KernelSU-Next/KernelSU-Next/releases).
-  It is signature-validated, not version-locked; a ~v3.1.x release best matches this built-in
-  susfs v2.2.0 driver, but a current release is also accepted. No Artisan-specific APK is needed.
-- Userspace hiding stack: ReZygisk/ZygiskNext → Shamiko → (optional) Tricky Store.
+## 6. Flash + manager
+- TWRP/OrangeFox → Install the zip. Back up Boot + DTBO first.
+- Manager: official KernelSU-Next (the kernel trusts the official signing key); `~v3.1.x` matches
+  susfs v2.2.0. Version is pinned to 33024 to match.
 
-## Verified in the built image
-`4.19.325-cip119-st3-BenlyKERNEL-v4.0.4+`, Hook mode: Manual (KPROBES off),
-SUSFS v2.2.0, KernelSU avc-spoof + kernel_umount handlers registered,
-valid ANDROID! boot header v2.
+## What the hardening achieves (vs Duck Detector)
+- `u:object_r:ksu_file:s0` and `u:r:ksu:s0` → **INVALID** (renamed/absent).
+- `app_zygote seqno split` → **gone** (`policyload` consistent).
+- **Not** fixed (not kernel-level): unlocked bootloader (hardware); Xposed `xposed_data`/
+  `xposed_file` contexts if you run an Xposed framework like Vector (userspace).

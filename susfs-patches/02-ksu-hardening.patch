@@ -1,0 +1,66 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index e5fa9113..0f875a89 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -48,7 +48,7 @@ endif
+ # Calculate version if git version is available
+ ifdef KSU_GIT_VERSION_VALID
+ # ksu_version: major * 30000 + git version for historical reasons
+-$(eval KSU_VERSION=$(shell expr 30000 + $(KSU_GIT_VERSION) + 118))
++$(eval KSU_VERSION=33024)
+ $(info -- KernelSU-Next version: $(KSU_VERSION))
+ ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+ else
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 65caadd6..632afefe 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -202,9 +202,14 @@ static void reset_avc_cache()
+     selinux_status_update_policyload(0);
+ #else
+     struct selinux_avc *avc = selinux_state.avc;
+-    avc_ss_reset(avc, 0);
+-    selnl_notify_policyload(0);
+-    selinux_status_update_policyload(&selinux_state, 0);
++    /* Mirror a legitimate policy reload instead of passing seqno 0.
++       Passing 0 reset policyload to 0 while access seqno advanced, which is the
++       detectable app_zygote "seqno split". Using an incremented latest_granting
++       (exactly what security_load_policy does) keeps the status page consistent. */
++    u32 seqno = ++selinux_state.ss->latest_granting;
++    avc_ss_reset(avc, seqno);
++    selnl_notify_policyload(seqno);
++    selinux_status_update_policyload(&selinux_state, seqno);
+ #endif
+     selinux_xfrm_notify_policyload();
+ }
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+index 9aa718fe..d7f27390 100644
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -33,7 +33,7 @@ static inline u32 current_sid(void)
+ 
+ // TODO: rename to "ksu"
+ #define KERNEL_SU_DOMAIN "su"
+-#define KERNEL_SU_FILE "ksu_file"
++#define KERNEL_SU_FILE "REPLACE_WITH_RANDOM_LABEL"
+ 
+ #define KERNEL_SU_CONTEXT "u:r:" KERNEL_SU_DOMAIN ":s0"
+ #define KSU_FILE_CONTEXT "u:object_r:" KERNEL_SU_FILE ":s0"
+diff --git a/kernel/supercalls.c b/kernel/supercalls.c
+index 7b127ea6..2779d6f0 100644
+--- a/kernel/supercalls.c
++++ b/kernel/supercalls.c
+@@ -868,11 +868,11 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
+             return 0;
+         }
+         if (cmd == CMD_SUSFS_SET_ANDROID_DATA_ROOT_PATH) {
+-            susfs_set_i_state_on_external_dir(arg);
++            /* deprecated in v2.2.0 kernel-side; no-op */
+             return 0;
+         }
+         if (cmd == CMD_SUSFS_SET_SDCARD_ROOT_PATH) {
+-            susfs_set_i_state_on_external_dir(arg);
++            /* deprecated; no-op */
+             return 0;
+         }
+ #endif //#ifdef CONFIG_KSU_SUSFS_SUS_PATH
