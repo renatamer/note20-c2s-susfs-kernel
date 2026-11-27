@@ -1,0 +1,56 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index e5fa9113..11015782 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -48,7 +48,7 @@ endif
+ # Calculate version if git version is available
+ ifdef KSU_GIT_VERSION_VALID
+ # ksu_version: major * 30000 + git version for historical reasons
+-$(eval KSU_VERSION=$(shell expr 30000 + $(KSU_GIT_VERSION) + 118))
++$(eval KSU_VERSION=33024)
+ $(info -- KernelSU-Next version: $(KSU_VERSION))
+ ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+ else
+@@ -258,6 +258,20 @@ endif
+ ccflags-y += -DEXPECTED_MANAGER_SIZE=$(KSU_NEXT_MANAGER_SIZE)
+ ccflags-y += -DEXPECTED_MANAGER_HASH=\"$(KSU_NEXT_MANAGER_HASH)\"
+ 
++# Nasty 1.2: slot 2 — our own manager signing key (RSA-2048 self-signed cert).
++# EXPECTED_MANAGER_SIZE_2 = DER cert length; EXPECTED_MANAGER_HASH_2 = sha256(cert).
++# A renamed manager signed v2-ONLY with this key is trusted without a rebuild.
++ifndef KSU_NEXT_MANAGER_SIZE_2
++KSU_NEXT_MANAGER_SIZE_2 := REPLACE_WITH_YOUR_MANAGER_CERT_SIZE
++endif
++ifndef KSU_NEXT_MANAGER_HASH_2
++KSU_NEXT_MANAGER_HASH_2 := REPLACE_WITH_YOUR_MANAGER_CERT_HASH
++endif
++ccflags-y += -DEXPECTED_MANAGER_SIZE_2=$(KSU_NEXT_MANAGER_SIZE_2)
++ccflags-y += -DEXPECTED_MANAGER_HASH_2=\"$(KSU_NEXT_MANAGER_HASH_2)\"
++$(info -- Nasty slot-2 manager signature size: $(KSU_NEXT_MANAGER_SIZE_2))
++$(info -- Nasty slot-2 manager signature hash: $(KSU_NEXT_MANAGER_HASH_2))
++
+ ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes
+ ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
+ 
+diff --git a/kernel/apk_sign.c b/kernel/apk_sign.c
+index 0470b800..205eb837 100644
+--- a/kernel/apk_sign.c
++++ b/kernel/apk_sign.c
+@@ -367,5 +367,16 @@ bool is_manager_apk(char *path)
+ 		return false;
+ 	}
+ #endif
+-	return check_v2_signature(path, EXPECTED_MANAGER_SIZE, EXPECTED_MANAGER_HASH);
++	/* Nasty 1.2: multi-signature manager whitelist. Slot 1 is the stock
++	 * KernelSU-Next key (the current manager keeps working). Slot 2, when
++	 * defined, trusts our own signing key so a renamed/re-signed manager is
++	 * accepted without a kernel rebuild. Package pin is off, so a manager under
++	 * any package name is accepted on signature alone. */
++	if (check_v2_signature(path, EXPECTED_MANAGER_SIZE, EXPECTED_MANAGER_HASH))
++		return true;
++#ifdef EXPECTED_MANAGER_SIZE_2
++	if (check_v2_signature(path, EXPECTED_MANAGER_SIZE_2, EXPECTED_MANAGER_HASH_2))
++		return true;
++#endif
++	return false;
+ }

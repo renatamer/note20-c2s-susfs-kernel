@@ -1,0 +1,72 @@
+diff --git a/arch/arm64/configs/exynos9830_defconfig b/arch/arm64/configs/exynos9830_defconfig
+index 275ff7dd4..05744eb70 100644
+--- a/arch/arm64/configs/exynos9830_defconfig
++++ b/arch/arm64/configs/exynos9830_defconfig
+@@ -29,7 +29,7 @@ CONFIG_THREAD_INFO_IN_TASK=y
+ #
+ CONFIG_INIT_ENV_ARG_LIMIT=32
+ # CONFIG_COMPILE_TEST is not set
+-CONFIG_LOCALVERSION="-BenlyKERNEL-v4.0.4"
++CONFIG_LOCALVERSION="-NastyKernel-1.2"
+ # CONFIG_LOCALVERSION_AUTO is not set
+ CONFIG_BUILD_SALT=""
+ CONFIG_HAVE_KERNEL_GZIP=y
+diff --git a/fs/proc/version.c b/fs/proc/version.c
+index b449f1865..ac67c6695 100644
+--- a/fs/proc/version.c
++++ b/fs/proc/version.c
+@@ -5,13 +5,37 @@
+ #include <linux/proc_fs.h>
+ #include <linux/seq_file.h>
+ #include <linux/utsname.h>
++#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
++#include <linux/cred.h>
++#include <linux/jump_label.h>
++#include <linux/string.h>
++extern struct static_key_false susfs_is_uname_spoof_buffer_set;
++extern void susfs_spoof_uname(struct new_utsname *tmp);
++#endif
+ 
+ static int version_proc_show(struct seq_file *m, void *v)
+ {
++#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
++	/* Nasty 1.2: close the /proc/version leak. The syscall uname() is spoofed
++	 * selectively in kernel/sys.c; mirror it here so third-party apps (uid >=
++	 * 10000) reading /proc/version get the same decoy, while root/system still
++	 * see the real kernel name. */
++	struct new_utsname tmp;
++
++	memcpy(&tmp, utsname(), sizeof(tmp));
++	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set) &&
++	    __kuid_val(current_uid()) >= 10000)
++		susfs_spoof_uname(&tmp);
++	seq_printf(m, linux_proc_banner,
++		tmp.sysname,
++		tmp.release,
++		tmp.version);
++#else
+ 	seq_printf(m, linux_proc_banner,
+ 		utsname()->sysname,
+ 		utsname()->release,
+ 		utsname()->version);
++#endif
+ 	return 0;
+ }
+ 
+diff --git a/kernel/sys.c b/kernel/sys.c
+index 83df9de68..9e76c2556 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -1265,7 +1265,11 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
+ 	down_read(&uts_sem);
+ 	memcpy(&tmp, utsname(), sizeof(tmp));
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+-	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set))
++	/* Nasty 1.2: selective uname spoof. Only third-party apps (uid >= 10000)
++	 * receive the decoy; root/system (incl. Settings, uid < 10000) see the
++	 * real kernel name. */
++	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set) &&
++	    __kuid_val(current_uid()) >= 10000)
+ 		susfs_spoof_uname(&tmp);
+ #endif
+ #ifndef CONFIG_FAKE_UNAME_NONE

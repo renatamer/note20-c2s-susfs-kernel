@@ -8,36 +8,47 @@ never different. So an older build is only ever a reduced-capability downgrade, 
 
 ---
 
-## [Unreleased] — Planned: 1.2
+## [Unreleased] — Planned: 1.3
 
-**Theme: erase the manager-app fingerprint + allow a choice of compatible managers.**
-A paired release — kernel **and** a rebuilt manager APK must ship together.
-
-- **Custom-renamed manager (primary).** Rebuild the KSU-Next manager from the branch matching
-  this kernel's driver (UAPI / version `33024`), change its `applicationId` off
-  `com.rifsxd.ksunext` to a neutral name, strip identifying label/icon/strings, and sign it with
-  our own key. The kernel's `EXPECTED_MANAGER_SIZE` / `EXPECTED_MANAGER_HASH`
-  (`kernel/Kbuild`, currently `0x3e6` / `79e5901…21bf7` = the KSU-Next CI key) are repointed to
-  **our** key's v2 signature-block size + SHA-256.
-  - *Why:* Duck Detector's remaining manager hit is the literal string `com.rifsxd.ksunext` in
-    process heap. KSU-Next 3.1.0+ exposes **no** hide/randomize-package toggle, so the only way
-    the string stops existing is to change the package name at build time.
-  - *Enabled by this kernel already:* `throne_tracker` identifies the manager by **signature,
-    not package name**; package pin is off (signature-only); `CHANGE_MANAGER_UID` (10006) exists.
-- **Multi-signature manager whitelist (secondary).** Patch `kernel/apk_sign.c`
-  (`is_manager_apk` / `check_v2_signature`) to accept a **table** of `{size, hash}` pairs so more
-  than one KSU-Next-compatible manager can be authorized without a rebuild.
-  - *Scope limit:* this only covers managers that speak **this driver's UAPI** (the KSU-Next
-    lineage). It does **not** enable the upstream KernelSU manager or SukiSU — those are a
-    different driver / different UAPI and would require a separate kernel build + reflash, not an
-    app-level choice.
-
-**Known limits:** renaming the manager hides only the *manager-app* fingerprint. Driver/path
-traces (`/data/adb/ksu`, SUSFS leftovers) remain the SUSFS/module layer's responsibility.
+- **SukiSU-Ultra driver swap** (tentative): a parallel, reflashable kernel that replaces the
+  KernelSU-Next driver with SukiSU-Ultra. Not a manager toggle — different driver / UAPI. Open
+  risk: SukiSU targets susfs 2.4.0 (no 4.19 drop-in) and KPM 5.10+, so it likely costs the
+  susfs 2.2.0 hiding base that 1.1/1.2 rely on. Re-evaluated after 1.2 is stable.
 
 ---
 
-## [1.1] — 2026-11-26 · `de2e788`  *(current shipped release)*
+## [1.2] — 2026-11-27  *(current shipped release)*
+
+**Theme: real kernel name for the owner, a convincing decoy for apps, and a renamable,
+multi-manager driver.** Binaries in `prebuilt/` (boot confirmed on-device, clang-14).
+1.1 archived under `prebuilt/archive/1.1/`.
+
+- **Selective uname spoof** (`kernel/sys.c`). The susfs uname spoof now applies **only to
+  third-party apps** (`current_uid() >= 10000`); root/system (incl. Settings) see the **real**
+  `Nasty-Kernel-1.2`. Active only when a spoof value is set in the SUSFS module — leave it
+  "default" and nothing is spoofed (then the real name shows to everyone).
+- **`/proc/version` leak closed** (`fs/proc/version.c`). `/proc/version` read `utsname()`
+  directly and was **never spoofed** — it leaked the real kernel name to any reader (Duck
+  Detector captured `…-NastyKernel-1.1+`). It now mirrors the same uid-gated spoof: apps get the
+  decoy, root/system see the real name.
+- **Multi-signature manager whitelist** (`kernel/apk_sign.c` + `Kbuild`). `is_manager_apk()`
+  now accepts a **table** of manager certs: **slot 1** = stock KSU-Next CI key (your current
+  manager keeps working — zero brick risk), **slot 2** = your own key. Package pin is off, so a
+  **renamed, re-signed manager is accepted on signature alone** — this is what lets you erase the
+  `com.rifsxd.ksunext` package fingerprint without ever losing root.
+  - The published patch **placeholders** slot-2's size/hash (`REPLACE_WITH_YOUR_MANAGER_CERT_*`):
+    generate your own signing key and bake its cert size + SHA-256, exactly like the SELinux label.
+  - The **custom-renamed manager APK** is built off-device and signed **v2-only** with your
+    slot-2 key (KSU rejects v1/v3 blocks); the kernel then trusts it with no rebuild.
+- `CONFIG_LOCALVERSION="-NastyKernel-1.2"`.
+
+**Known limits:** this does **not** touch the userspace Duck dangers — keybox (TEE), boot hash
+(Bootloader), or an Xposed framework such as Vector (LSPosed + SELinux). Those remain the
+attestation/module layer's job.
+
+---
+
+## [1.1] — 2026-11-26 · `de2e788`  *(superseded by 1.2; archived under `prebuilt/archive/1.1/`)*
 
 **Theme: kernel-level SELinux anti-detection.** Built on 1.0; cut Duck Detector from 4 dangers
 to 2. Binaries in `prebuilt/` (verified booting, clang-14).
