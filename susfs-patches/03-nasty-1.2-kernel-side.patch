@@ -12,10 +12,10 @@ index 275ff7dd4..05744eb70 100644
  CONFIG_BUILD_SALT=""
  CONFIG_HAVE_KERNEL_GZIP=y
 diff --git a/fs/proc/version.c b/fs/proc/version.c
-index b449f1865..ac67c6695 100644
+index b449f1865..d25e1a6b8 100644
 --- a/fs/proc/version.c
 +++ b/fs/proc/version.c
-@@ -5,13 +5,37 @@
+@@ -5,13 +5,36 @@
  #include <linux/proc_fs.h>
  #include <linux/seq_file.h>
  #include <linux/utsname.h>
@@ -30,15 +30,14 @@ index b449f1865..ac67c6695 100644
  static int version_proc_show(struct seq_file *m, void *v)
  {
 +#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-+	/* Nasty 1.2: close the /proc/version leak. The syscall uname() is spoofed
-+	 * selectively in kernel/sys.c; mirror it here so third-party apps (uid >=
-+	 * 10000) reading /proc/version get the same decoy, while root/system still
-+	 * see the real kernel name. */
++	/* Nasty 1.2: close the /proc/version leak with the SAME global spoof as the
++	 * uname() syscall (kernel/sys.c). /proc/version read utsname() directly and
++	 * was never spoofed; now it mirrors uname() so /proc/version, uname() and
++	 * os.version all agree when a spoof value is set. */
 +	struct new_utsname tmp;
 +
 +	memcpy(&tmp, utsname(), sizeof(tmp));
-+	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set) &&
-+	    __kuid_val(current_uid()) >= 10000)
++	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set))
 +		susfs_spoof_uname(&tmp);
 +	seq_printf(m, linux_proc_banner,
 +		tmp.sysname,
@@ -54,19 +53,18 @@ index b449f1865..ac67c6695 100644
  }
  
 diff --git a/kernel/sys.c b/kernel/sys.c
-index 83df9de68..9e76c2556 100644
+index 83df9de68..e03dda72e 100644
 --- a/kernel/sys.c
 +++ b/kernel/sys.c
-@@ -1265,7 +1265,11 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
+@@ -1265,6 +1265,11 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
  	down_read(&uts_sem);
  	memcpy(&tmp, utsname(), sizeof(tmp));
  #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
--	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set))
-+	/* Nasty 1.2: selective uname spoof. Only third-party apps (uid >= 10000)
-+	 * receive the decoy; root/system (incl. Settings, uid < 10000) see the
-+	 * real kernel name. */
-+	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set) &&
-+	    __kuid_val(current_uid()) >= 10000)
++	/* Nasty 1.2: GLOBAL uname spoof (when a spoof value is set). Applies to every
++	 * process so uname(), /proc/version and the Zygote-captured os.version all
++	 * agree. A selective (uid-gated) spoof is detectable: os.version is captured
++	 * by the privileged Zygote (uid 0) at boot and inherited by apps, so gating
++	 * on uid leaks the real name and trips "kernel version spoofing" checks. */
+ 	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set))
  		susfs_spoof_uname(&tmp);
  #endif
- #ifndef CONFIG_FAKE_UNAME_NONE

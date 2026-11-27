@@ -77,8 +77,10 @@ cmdline `androidboot.hardware=exynos990 loop.max_part=7`) → `boot.img`, zipped
 - Manager: official KernelSU-Next on slot 1 (`~v3.1.x`, driver 33024, susfs v2.2.0) works out of
   the box — root never depends on the custom manager.
 - **Name hiding is opt-in:** in the SUSFS module set a *Spoofed Kernel Version + Build* to a
-  believable stock string (not "default"). The kernel's selective spoof only engages when a value
-  is set; then apps (uid ≥ 10000) get the decoy while root/system see `Nasty-Kernel-1.2`.
+  believable stock string (not "default"). The spoof is **global** — it engages only when a value
+  is set, and then applies to every process so `uname`, `/proc/version` and `os.version` all agree.
+  (A uid-gated/selective spoof is detectable: `os.version` is captured by the privileged Zygote
+  and leaks the real name to apps, tripping a "kernel version spoofing" check.)
 
 ## 7. Renamed manager — erase the `com.rifsxd.ksunext` fingerprint (slot 2)
 Build off-device (needs an Android SDK; not buildable in a minimal CI container):

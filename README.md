@@ -22,8 +22,8 @@ root-hiding kernel that defeats the SELinux signatures most KSU setups leak.
 | **SELinux `ksu_file` type** | ✅ **renamed to a random label** → detector's `u:object_r:ksu_file:s0` probe returns INVALID |
 | **`app_zygote` seqno split** | ✅ **fixed** — KSU's AVC reset mirrors a real policy reload (no `policyload=0`) |
 | **Version pin** | ✅ KSU driver pinned to **33024** (matches official KSU-Next v3.1.0 manager) |
-| **Selective uname spoof** · 1.2 | ✅ third-party apps (uid ≥ 10000) see a stock decoy; root/system/Settings see the real `Nasty-Kernel-1.2` |
-| **`/proc/version` leak** · 1.2 | ✅ **closed** — it read `utsname()` directly and leaked the real kernel name; now uid-gated like `uname` |
+| **Global uname spoof** · 1.2 | ✅ when a decoy is set, **all** processes see it (`uname` + `/proc/version` + `os.version` agree) → no "version spoofing" tell. A uid-gated/selective spoof leaks the real name via `os.version` and is detectable |
+| **`/proc/version` leak** · 1.2 | ✅ **closed** — it read `utsname()` directly and leaked the real kernel name; now mirrors the global `uname` spoof |
 | **Multi-signature manager** · 1.2 | ✅ slot 1 = stock KSU-Next key + slot 2 = your own key → run a **renamed** manager (erases the `com.rifsxd.ksunext` fingerprint) with **zero brick risk** |
 
 Against **Duck Detector**, the kernel's entire KSU-attributable SELinux footprint is cleared
@@ -66,8 +66,10 @@ and fall back to the stock manager on slot 1.
    KSU-Next Manager (`~v3.1.x`, driver 33024) works out of the box. Slot 2 trusts **your own**
    key so you can run a renamed manager (see `REPRODUCE.md`).
 5. **Activate the name hiding:** in the SUSFS module set a **Spoofed Kernel Version + Build**
-   to a believable *stock* string (not "default"). Only then does the selective spoof engage —
-   apps see the decoy, you/system see `Nasty-Kernel-1.2`.
+   to a believable *stock* string (not "default"). The spoof is **global** — all processes
+   (you/root included) then see the decoy, which is exactly what keeps `uname`, `/proc/version`
+   and `os.version` consistent and avoids a "kernel version spoofing" flag. Use a stock string
+   that keeps the real `4.19.325` base (your kernel genuinely is 4.19); don't claim another line.
 6. Userspace hiding stack (reference): **sidex15 susfs4ksu-module** + ReZygisk/BreZygisk +
    **Tricky Store OSS** + HMA-OSS + **Specter** (keybox / PIF / cleanup). An Xposed framework
    (e.g. Vector) is optional and **loud** — it adds LSPosed + SELinux detections.

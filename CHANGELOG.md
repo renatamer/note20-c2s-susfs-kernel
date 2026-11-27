@@ -19,18 +19,22 @@ never different. So an older build is only ever a reduced-capability downgrade, 
 
 ## [1.2] — 2026-11-27  *(current shipped release)*
 
-**Theme: real kernel name for the owner, a convincing decoy for apps, and a renamable,
-multi-manager driver.** Binaries in `prebuilt/` (boot confirmed on-device, clang-14).
+**Theme: a consistent kernel-name decoy for all processes, and a renamable, multi-manager
+driver.** Binaries in `prebuilt/` (boot confirmed on-device, clang-14).
 1.1 archived under `prebuilt/archive/1.1/`.
 
-- **Selective uname spoof** (`kernel/sys.c`). The susfs uname spoof now applies **only to
-  third-party apps** (`current_uid() >= 10000`); root/system (incl. Settings) see the **real**
-  `Nasty-Kernel-1.2`. Active only when a spoof value is set in the SUSFS module — leave it
-  "default" and nothing is spoofed (then the real name shows to everyone).
+- **Global uname spoof** (`kernel/sys.c`). When a spoof value is set in the SUSFS module, the
+  susfs uname spoof applies to **every process** — so `uname()`, `/proc/version` and the
+  Zygote-captured `os.version` all agree. (Leave it "default" and nothing is spoofed.)
+  - *Why not selective?* An earlier 1.2 build gated the spoof on `uid >= 10000` to let
+    root/Settings keep the real name. That is **detectable**: `os.version` is captured by the
+    privileged Zygote (uid 0) at boot and inherited by apps, so gating on uid leaked the real
+    name into every app's runtime and tripped Duck Detector's "kernel version spoofing" check
+    (a *new* Kernel Check danger). Global = consistent = no such tell. You no longer see the
+    real `Nasty-Kernel-1.2` name yourself when the spoof is on — an accepted trade for hiding.
 - **`/proc/version` leak closed** (`fs/proc/version.c`). `/proc/version` read `utsname()`
   directly and was **never spoofed** — it leaked the real kernel name to any reader (Duck
-  Detector captured `…-NastyKernel-1.1+`). It now mirrors the same uid-gated spoof: apps get the
-  decoy, root/system see the real name.
+  Detector captured `…-NastyKernel-1.1+`). It now mirrors the same global spoof.
 - **Multi-signature manager whitelist** (`kernel/apk_sign.c` + `Kbuild`). `is_manager_apk()`
   now accepts a **table** of manager certs: **slot 1** = stock KSU-Next CI key (your current
   manager keeps working — zero brick risk), **slot 2** = your own key. Package pin is off, so a
